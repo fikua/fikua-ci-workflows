@@ -5,6 +5,10 @@ name: Go CI
 on:
   workflow_call:
     inputs:
+      working-directory:
+        description: Directory with go.mod.
+        type: string
+        default: .
       postgres:
         description: Start PostgreSQL 17 and export TEST_DATABASE_URL.
         type: boolean
@@ -25,6 +29,9 @@ jobs:
   go:
     name: gofmt, vet, build, test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
@@ -32,7 +39,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ inputs.working-directory }}/go.mod
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
 
       # Throwaway database for this job only; user and password are "test".
       - name: Start PostgreSQL

@@ -9,6 +9,10 @@ on:
         description: JSON list of CodeQL languages. `go` is built automatically; the rest need no build.
         type: string
         default: '["go", "actions"]'
+      go-working-directory:
+        description: Directory with go.mod, for the Go analysis.
+        type: string
+        default: .
 
 permissions:
   contents: read
@@ -32,14 +36,21 @@ jobs:
         if: matrix.language == 'go'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ inputs.go-working-directory }}/go.mod
+          cache-dependency-path: ${{ inputs.go-working-directory }}/go.sum
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3
         with:
           languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
+          build-mode: ${{ matrix.language == 'go' && (inputs.go-working-directory == '.' && 'autobuild' || 'manual') || 'none' }}
           queries: security-and-quality
+
+      # Go autobuild runs at the repository root; point it at the module.
+      - name: Build Go module
+        if: matrix.language == 'go' && inputs.go-working-directory != '.'
+        working-directory: ${{ inputs.go-working-directory }}
+        run: go build ./...
 
       - name: Analyze
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3

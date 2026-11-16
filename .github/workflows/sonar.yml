@@ -6,6 +6,10 @@ name: SonarQube Cloud
 on:
   workflow_call:
     inputs:
+      working-directory:
+        description: Directory with go.mod.
+        type: string
+        default: .
       postgres:
         description: Start PostgreSQL 17 and export TEST_DATABASE_URL.
         type: boolean
@@ -27,6 +31,9 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout (full history, for new-code detection)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
@@ -36,7 +43,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ inputs.working-directory }}/go.mod
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
 
       # Throwaway database for this job only; user and password are "test".
       - name: Start PostgreSQL
@@ -66,5 +74,7 @@ jobs:
 
       - name: SonarQube Cloud scan
         uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65  # v8.4.1
+        with:
+          projectBaseDir: ${{ inputs.working-directory }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
