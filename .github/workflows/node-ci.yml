@@ -1,0 +1,86 @@
+name: Node CI
+
+# Reusable: npm ci, build, tests and extra checks of a Node/TypeScript
+# frontend and, optionally, the SonarQube Cloud scan (the project's
+# sonar-project.properties points at the coverage report the tests produce).
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: '24'
+      working-directory:
+        description: Directory with package.json and package-lock.json.
+        type: string
+        default: .
+      build-command:
+        type: string
+        default: npm run --if-present build
+      test-command:
+        description: Runs the tests; with sonar, it must also write the coverage report.
+        type: string
+        default: npm test
+      extra-checks:
+        description: Extra shell run after the tests (e.g. a typecheck or a linter).
+        type: string
+        default: ''
+      sonar:
+        description: Run the SonarQube Cloud scan after the tests (needs SONAR_TOKEN).
+        type: boolean
+        default: false
+    secrets:
+      SONAR_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: npm build, test${{ inputs.sonar && ', sonar' || '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout (full history when Sonar runs, for new-code detection)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        with:
+          fetch-depth: ${{ inputs.sonar && 0 || 1 }}
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v5.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Build
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }}
+        run: bash -euo pipefail -c "$BUILD_COMMAND"
+
+      - name: Tests
+        env:
+          TEST_COMMAND: ${{ inputs.test-command }}
+        run: bash -euo pipefail -c "$TEST_COMMAND"
+
+      - name: Extra checks
+        if: inputs.extra-checks != ''
+        env:
+          EXTRA_CHECKS: ${{ inputs.extra-checks }}
+        run: bash -euo pipefail -c "$EXTRA_CHECKS"
+
+      - name: SonarQube Cloud scan
+        if: inputs.sonar
+        uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65  # v8.4.1
+        with:
+          projectBaseDir: ${{ inputs.working-directory }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
