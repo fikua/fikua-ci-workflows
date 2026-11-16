@@ -1,0 +1,70 @@
+name: SonarQube Cloud
+
+# Reusable: Go tests with coverage, then a SonarQube Cloud scan (ADR 0011).
+# Needs sonar-project.properties in the caller (coverage.out, test-report.json),
+# the project fikua_<repo> with Automatic Analysis off, and SONAR_TOKEN.
+on:
+  workflow_call:
+    inputs:
+      postgres:
+        description: Start PostgreSQL 17 and export TEST_DATABASE_URL.
+        type: boolean
+        default: false
+      coverpkg:
+        description: Packages counted for coverage (go test -coverpkg).
+        type: string
+        default: ./...
+    secrets:
+      SONAR_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  sonar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout (full history, for new-code detection)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # Throwaway database for this job only; user and password are "test".
+      - name: Start PostgreSQL
+        if: inputs.postgres
+        run: |
+          docker run -d --name postgres -p 5432:5432 \
+            -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=test \
+            postgres:17-alpine
+          for _ in $(seq 1 30); do
+            docker exec postgres pg_isready -U test -d test && break
+            sleep 2
+          done
+          docker exec postgres pg_isready -U test -d test
+          echo "TEST_DATABASE_URL=postgres://localhost:5432/test?user=test&password=test&sslmode=disable" >> "$GITHUB_ENV"
+
+      - name: Cache SonarQube packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Tests with coverage
+        env:
+          COVERPKG: ${{ inputs.coverpkg }}
+        run: go test -p 1 -count=1 -coverpkg="$COVERPKG" -coverprofile=coverage.out -json ./... > test-report.json
+
+      - name: SonarQube Cloud scan
+        uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65  # v8.4.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

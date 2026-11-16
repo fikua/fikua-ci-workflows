@@ -1,0 +1,71 @@
+name: Go CI
+
+# Reusable: gofmt, go vet, go build and go test for a Go module, optionally
+# against a throwaway PostgreSQL (TEST_DATABASE_URL is exported when enabled).
+on:
+  workflow_call:
+    inputs:
+      postgres:
+        description: Start PostgreSQL 17 and export TEST_DATABASE_URL.
+        type: boolean
+        default: false
+      test-command:
+        description: Command that runs the tests.
+        type: string
+        default: go test -race -count=1 ./...
+      extra-checks:
+        description: Extra shell run after the tests (e.g. a generated-file check).
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: gofmt, vet, build, test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # Throwaway database for this job only; user and password are "test".
+      - name: Start PostgreSQL
+        if: inputs.postgres
+        run: |
+          docker run -d --name postgres -p 5432:5432 \
+            -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=test \
+            postgres:17-alpine
+          for _ in $(seq 1 30); do
+            docker exec postgres pg_isready -U test -d test && break
+            sleep 2
+          done
+          docker exec postgres pg_isready -U test -d test
+          echo "TEST_DATABASE_URL=postgres://localhost:5432/test?user=test&password=test&sslmode=disable" >> "$GITHUB_ENV"
+
+      - name: gofmt
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then echo "Not gofmt-formatted:"; echo "$out"; exit 1; fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: Tests
+        env:
+          TEST_COMMAND: ${{ inputs.test-command }}
+        run: bash -euo pipefail -c "$TEST_COMMAND"
+
+      - name: Extra checks
+        if: inputs.extra-checks != ''
+        env:
+          EXTRA_CHECKS: ${{ inputs.extra-checks }}
+        run: bash -euo pipefail -c "$EXTRA_CHECKS"

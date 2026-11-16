@@ -1,0 +1,91 @@
+name: Image release
+
+# Reusable: builds a multi-arch image and pushes it to ghcr.io/fikua/<image>
+# (ADR 0015) and, while the migration lasts, to Docker Hub fikua/<image>.
+# Tags: latest (main and v* tags), sha-<short>, and X.Y.Z on releases.
+# The caller grants `packages: write`. Deploying is a separate step in
+# fikua-platform-iac.
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Image name without registry, e.g. vitalia.
+        type: string
+        required: true
+      context:
+        description: Docker build context.
+        type: string
+        default: .
+      dockerfile:
+        description: Dockerfile path, relative to the repository root.
+        type: string
+        default: Dockerfile
+      platforms:
+        type: string
+        default: linux/amd64,linux/arm64
+      dockerhub:
+        description: Also push to Docker Hub (needs DOCKER_USERNAME and DOCKER_TOKEN). Ends with ADR 0015 step 7.
+        type: boolean
+        default: true
+    secrets:
+      DOCKER_USERNAME:
+        required: false
+      DOCKER_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392  # v3.6.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3.11.1
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1  # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: inputs.dockerhub
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1  # v3.5.0
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804  # v5.7.0
+        with:
+          images: |
+            ghcr.io/fikua/${{ inputs.image }}
+            name=fikua/${{ inputs.image }},enable=${{ inputs.dockerhub }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6.18.0
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
