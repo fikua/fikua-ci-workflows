@@ -29,7 +29,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Checkout (full history, for new-code detection)
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
 
@@ -53,7 +53,7 @@ jobs:
           echo "TEST_DATABASE_URL=postgres://localhost:5432/test?user=test&password=test&sslmode=disable" >> "$GITHUB_ENV"
 
       - name: Cache SonarQube packages
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
@@ -65,6 +65,6 @@ jobs:
         run: go test -p 1 -count=1 -coverpkg="$COVERPKG" -coverprofile=coverage.out -json ./... > test-report.json
 
       - name: SonarQube Cloud scan
-        uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65  # v8.4.1
+        uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4  # v8.5.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
