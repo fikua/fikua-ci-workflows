@@ -37,7 +37,8 @@ permissions:
 
 jobs:
   node:
-    name: npm build, test${{ inputs.sonar && ', sonar' || '' }}
+    # Fixed name: branch protection requires it as "<caller job> / npm".
+    name: npm
     runs-on: ubuntu-latest
     permissions:
       contents: read

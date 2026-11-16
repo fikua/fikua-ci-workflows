@@ -34,7 +34,8 @@ permissions:
 
 jobs:
   gradle:
-    name: gradle ${{ inputs.gradle-tasks }}${{ inputs.sonar && ' sonar' || '' }}
+    # Fixed name: branch protection requires it as "<caller job> / gradle".
+    name: gradle
     runs-on: ubuntu-latest
     permissions:
       contents: read
